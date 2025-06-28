@@ -1,15 +1,7 @@
 name: Python Tests
 run-name: Rest API Python Tests
 on:
-    schedule:
-      - cron: '0 2 * * *'  # Runs daily at midnight UTC
-    workflow_dispatch:  # Allows manual triggering of the workflow
-      inputs:
-        python-version:
-          description: 'Python version to use'
-          required: true
-          default: '3.13.2'
-    push:
+  push:
 jobs:
   Run-Tests:
     runs-on: ubuntu-latest
@@ -19,7 +11,7 @@ jobs:
       - name: Set Up Python 3.13.2
         uses: actions/setup-python@v3
         with:
-          python-version: "${{ github.event.inputs.python-version || '3.13.2' }}"
+          python-version: 3.13.2
       - name: Run Tests
         run: |
              chmod +x -R ${{ github.workspace }}
@@ -32,3 +24,51 @@ jobs:
         if: success() || failure()
         with:
           paths: results.xml
+      - name: Notify Slack - Build Status
+        if: always()
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_COLOR: ${{ job.status == 'success' && 'good' || 'danger' }}
+          SLACK_MESSAGE: |
+            ${{ job.status == 'success' && ':white_check_mark: Python Tests completed successfully' || ':x: Python Tests failed' }}
+            on branch *${{ github.ref_name }}* by *${{ github.actor }}*.
+            Details: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View on GitHub>
+          SLACK_TITLE: "Build Status: ${{ job.status }}"
+      - name: Send success email
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: ":white_check_mark: Build Success - ${{ github.repository }}"
+          html_body: >
+            <!DOCTYPE html><html><body><h2>:white_check_mark: Build Succeeded!</h2>
+            <p>Repository: <b>${{ github.repository }}</b></p>
+            <p>Commit: <b>${{ github.sha }}</b></p>
+            <p>Branch: <b>${{ github.ref_name }}</b></p>
+            <p>Check the details on <a href="${{ github.server_url }}/actions">GitHub Actions</a>.</p>
+            </body></html>
+          to: ${{ secrets.RECIPIENT_EMAIL }}
+          from: ${{ secrets.SMTP_USERNAME }}
+      - name: Send Build Status Email
+        uses: dawidd6/action-send-mail@v3
+        if: always()
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "${{ job.status == 'success' && ':white_check_mark: Build Succeeded' || ':x: Build Failed' }} - ${{ github.repository }}"
+          html_body: >
+            <!DOCTYPE html><html><body>
+            <h2>${{ job.status == 'success' && ':white_check_mark: Build Succeeded' || ':x: Build Failed' }}</h2>
+            <p>Repository: <b>${{ github.repository }}</b></p>
+            <p>Commit: <b>${{ github.sha }}</b></p>
+            <p>Branch: <b>${{ github.ref_name }}</b></p>
+            <p>Check the details on <a href="${{ github.server_url }}/actions">GitHub Actions</a>.</p>
+            </body></html>
+          to: ${{ secrets.RECIPIENT_EMAIL }}
+          from: ${{ secrets.SMTP_USERNAME }}
